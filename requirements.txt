@@ -1,0 +1,4 @@
+# Python dependencies for TurtleBot3 Autonomous Navigation
+# Core ROS 2 Humble packages are provided via apt (ros-humble-desktop, ros-humble-navigation2, ros-humble-turtlebot3*)
+transforms3d>=0.4.1
+pytest>=7.0.0

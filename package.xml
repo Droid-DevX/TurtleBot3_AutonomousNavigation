@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>turtlebot3_autonomous_navigation</name>
+  <version>1.0.0</version>
+  <description>Autonomous Navigation, Obstacle Avoidance, and Testing using TurtleBot3 Burger, ROS 2 Humble, Gazebo Classic, and Nav2.</description>
+  <maintainer email="ayush@todo.todo">ayush</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav2_bringup</depend>
+  <depend>nav2_simple_commander</depend>
+  <depend>turtlebot3_gazebo</depend>
+  <depend>turtlebot3_navigation2</depend>
+  <depend>gazebo_ros</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>rviz2</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
