@@ -34,8 +34,10 @@ def cleanup():
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:
                 pass
-    # Clean lingering Gazebo Classic processes
-    subprocess.run(["killall", "-9", "gzserver", "gzclient"],
+    # Clean lingering Gazebo and Nav2 processes
+    subprocess.run(["pkill", "-9", "-f", "component_container|gzserver|gzclient|robot_state_publisher"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run("rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*", shell=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print("[INFO] Cleanup complete. Shutdown successful.")
 
@@ -103,13 +105,16 @@ def configure_environment():
 
 def kill_stale_processes():
     """Ensure no stale simulator processes exist from previous runs."""
-    res = subprocess.run(["pgrep", "-f", "gzserver|gzclient"],
+    res = subprocess.run(["pgrep", "-f", "gzserver|gzclient|nav2|rviz2|component_container"],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.stdout:
-        print("  -> Terminating existing Gazebo instances...")
-        subprocess.run(["killall", "-9", "gzserver", "gzclient"],
+        print("  -> Terminating existing Gazebo/Nav2 instances...")
+        subprocess.run(["pkill", "-9", "-f", "gzserver|gzclient|rviz2|component_container"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1.0)
+    # Clean up orphaned Fast-DDS shared memory locks that cause RTPS_TRANSPORT_SHM errors
+    subprocess.run("rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*", shell=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def wait_for_topic(topic_name, timeout_sec=30, env=None):
     """Wait until a specific ROS 2 topic is active and publishing."""
@@ -181,6 +186,7 @@ def main():
     print(" TURTLEBOT3 SIMULATION READY")
     print(" Active Robot: Burger")
     print(" Simulator:    Gazebo Classic 11.10.2")
+    print(" Environment:  TurtleBot3 House World")
     print(" Topics:       /clock, /odom, /scan, /cmd_vel, /tf")
     print("="*60 + "\n")
 

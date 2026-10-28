@@ -48,13 +48,6 @@ else
     exit 1
 fi
 
-# 6. Verify ffmpeg for recording
-if command -v ffmpeg >/dev/null 2>&1; then
-    echo "[PASS] ffmpeg screen recording utility is available"
-else
-    echo "[WARN] ffmpeg utility not detected"
-fi
-
 echo "============================================================"
 echo " ALL SYSTEM PRE-CHECKS PASSED SUCCESSFULLY"
 echo "============================================================"

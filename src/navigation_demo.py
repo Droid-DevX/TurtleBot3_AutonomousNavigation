@@ -27,30 +27,56 @@ def create_pose_stamped(navigator, x, y, yaw_deg):
     return pose
 
 def main():
-    rclpy.init()
+    # Enforce use_sim_time so BasicNavigator clock matches Gazebo simulation clock
+    rclpy.init(args=['--ros-args', '-p', 'use_sim_time:=true', *sys.argv[1:]])
     navigator = BasicNavigator()
+    navigator.set_parameters([rclpy.parameter.Parameter('use_sim_time', rclpy.parameter.Parameter.Type.BOOL, True)])
 
     print("\n" + "="*60)
     print(" TURTLEBOT3 AUTONOMOUS NAVIGATION DEMONSTRATOR")
     print("="*60)
 
-    # 1. Set Initial Pose (matches spawn pose in turtlebot3_world)
-    init_x, init_y, init_yaw = -2.0, -0.5, 0.0
-    print(f"[1/4] Setting initial pose: x={init_x}, y={init_y}, yaw={init_yaw}°")
+    # Ensure simulation clock (/clock) is ticking before stamping poses
+    print("[INFO] Synchronizing with simulation clock...")
+    while rclpy.ok() and navigator.get_clock().now().nanoseconds == 0:
+        rclpy.spin_once(navigator, timeout_sec=0.1)
+    sim_time_sec = navigator.get_clock().now().nanoseconds / 1e9
+    print(f"  -> Simulation clock active (current sim time: {sim_time_sec:.2f}s).")
+
+    # 1. Set Initial Pose (matches safe spawn pose in turtlebot3_house)
+    init_x, init_y, init_yaw = -2.0, 1.0, 0.0
+    print(f"[1/4] Setting initial pose: x={init_x}, y={init_y}, yaw={init_yaw}°", flush=True)
     initial_pose = create_pose_stamped(navigator, init_x, init_y, init_yaw)
     navigator.setInitialPose(initial_pose)
 
     # 2. Wait for Nav2 active
-    print("[2/4] Waiting for Nav2 stack lifecycle nodes to activate...")
-    navigator.waitUntilNav2Active()
-    print("  -> Nav2 is fully active and ready.")
+    print("[2/4] Waiting for Nav2 stack lifecycle nodes to activate...", flush=True)
+    from lifecycle_msgs.srv import GetState
+    amcl_client = navigator.create_client(GetState, 'amcl/get_state')
+    if not amcl_client.wait_for_service(timeout_sec=15.0):
+        print("\n[ERROR] Timed out waiting for /amcl/get_state service to become available!", file=sys.stderr)
+        print("[HINT] Nav2 nodes are not loaded in nav2_container.", file=sys.stderr)
+        print("       A previous Gazebo or Nav2 process may still be running in the background.", file=sys.stderr)
+        print("       Run: pkill -9 -f 'gzserver|component_container' && rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*", file=sys.stderr)
+        print("       Then restart: python3 src/start_robot.py --with-nav", file=sys.stderr)
+        rclpy.shutdown()
+        sys.exit(1)
 
-    # 3. Define multi-goal waypoints navigating through the obstacle course
-    # turtlebot3_world contains columns and barrier walls
+    navigator.waitUntilNav2Active()
+    print("  -> Nav2 is fully active and ready.", flush=True)
+
+    # Confirm AMCL localization is active
+    print("[INFO] Confirming AMCL laser scan localization convergence...", flush=True)
+    for _ in range(10):
+        rclpy.spin_once(navigator, timeout_sec=0.2)
+    print("  -> AMCL localization active and ready.", flush=True)
+
+    # 3. Define multi-goal waypoints navigating through the house rooms
+    # turtlebot3_house contains multi-room partitions, doors, tables, and furniture
     waypoints = [
-        {"name": "Waypoint 1 (Center Hallway)", "x": 0.0, "y": 0.0, "yaw": 0.0, "timeout": 60},
-        {"name": "Waypoint 2 (East Obstacle Perimeter)", "x": 1.2, "y": -0.8, "yaw": 90.0, "timeout": 60},
-        {"name": "Waypoint 3 (Return to Base)", "x": -2.0, "y": -0.5, "yaw": 180.0, "timeout": 90}
+        {"name": "Waypoint 1 (North-East Master Room)", "x": 4.5, "y": 2.5, "yaw": 0.0, "timeout": 90},
+        {"name": "Waypoint 2 (South-East Sunroom)", "x": 6.0, "y": -1.0, "yaw": -90.0, "timeout": 90},
+        {"name": "Waypoint 3 (Return to Living Room Base)", "x": -2.0, "y": 1.0, "yaw": 180.0, "timeout": 120}
     ]
 
     print(f"[3/4] Executing autonomous navigation sequence ({len(waypoints)} goals)...")
@@ -71,7 +97,7 @@ def main():
 
             if feedback and elapsed > 0:
                 dist = feedback.distance_remaining
-                print(f"  [Progress] Distance remaining: {dist:.2f}m | Elapsed: {elapsed:.1f}s", end="\r")
+                print(f"  [Progress] Distance remaining: {dist:.2f}m | Elapsed: {elapsed:.1f}s", end="\r", flush=True)
 
             # Check timeout
             if elapsed > wp["timeout"]:
@@ -115,7 +141,8 @@ def main():
     else:
         print("[DEMO WARNING] One or more goals did not complete successfully.")
 
-    navigator.lifecycleShutdown()
+    # Keep lifecycle nodes running for interactive simulation
+    # navigator.lifecycleShutdown()
     rclpy.shutdown()
     sys.exit(0 if all_passed else 1)
 

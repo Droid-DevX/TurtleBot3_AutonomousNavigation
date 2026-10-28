@@ -15,7 +15,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    default_world = os.path.join(pkg_dir, 'worlds', 'turtlebot3_world.world')
+    default_world = os.path.join(pkg_dir, 'worlds', 'turtlebot3_house.world')
 
     pkg_tb3_gazebo = get_package_share_directory('turtlebot3_gazebo')
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
@@ -24,7 +24,7 @@ def generate_launch_description():
     gui = LaunchConfiguration('gui', default='true')
     world = LaunchConfiguration('world', default=default_world)
     x_pose = LaunchConfiguration('x_pose', default='-2.0')
-    y_pose = LaunchConfiguration('y_pose', default='-0.5')
+    y_pose = LaunchConfiguration('y_pose', default='1.0')
     z_pose = LaunchConfiguration('z_pose', default='0.01')
 
     # Configure robust model paths and disable remote model database lookup
@@ -54,7 +54,7 @@ def generate_launch_description():
     declare_x_pose = DeclareLaunchArgument(
         'x_pose', default_value='-2.0', description='Initial robot X coordinate')
     declare_y_pose = DeclareLaunchArgument(
-        'y_pose', default_value='-0.5', description='Initial robot Y coordinate')
+        'y_pose', default_value='1.0', description='Initial robot Y coordinate')
     declare_z_pose = DeclareLaunchArgument(
         'z_pose', default_value='0.01', description='Initial robot Z coordinate')
 
@@ -75,10 +75,11 @@ def generate_launch_description():
     )
 
     # robot_state_publisher
+    tb3_model = os.environ.get('TURTLEBOT3_MODEL', 'burger')
     urdf_path = os.path.join(
-        get_package_share_directory('turtlebot3_description'),
+        pkg_tb3_gazebo,
         'urdf',
-        'turtlebot3_burger.urdf'
+        f'turtlebot3_{tb3_model}.urdf'
     )
     with open(urdf_path, 'r') as f:
         robot_desc = f.read()

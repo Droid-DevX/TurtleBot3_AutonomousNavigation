@@ -3,12 +3,25 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.pytest_cache/
 
 # ROS 2 / Colcon
 build/
 install/
 log/
 
-# IDE
+# Logs and runtime artifacts
+*.log
+/tmp/
+
+# Media artifacts (videos/recordings should be kept outside repo)
+*.mp4
+*.gif
+*.webm
+!docs/images/**
+
+# IDE and OS
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db

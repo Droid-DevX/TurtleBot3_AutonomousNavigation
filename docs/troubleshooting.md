@@ -7,7 +7,7 @@ This guide documents the root cause analysis, diagnostic commands, and verified 
 ## 1. Issue: Gazebo `gzserver` Hangs or Exits with Code 255
 
 ### Symptoms
-- When running `ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py`, Gazebo server hangs or terminates with exit code 255.
+- When running `ros2 launch turtlebot3_autonomous_navigation simulation.launch.py`, Gazebo server hangs or terminates with exit code 255.
 - `spawn_entity.py` logs `Waiting for service /spawn_entity, timeout = 30` and eventually dies with:
   ```text
   [ERROR] [spawn_entity.py]: Service /spawn_entity unavailable. Was Gazebo started with GazeboRosFactory?
@@ -25,7 +25,7 @@ Gazebo Classic defaults to querying `http://models.gazebosim.org` whenever a wor
    ```bash
    export GAZEBO_MODEL_DATABASE_URI=""
    ```
-2. Ensure all required models (`ground_plane`, `sun`, `turtlebot3_burger`, `turtlebot3_world`) are available locally in `GAZEBO_MODEL_PATH`:
+2. Ensure all required models (`ground_plane`, `sun`, `turtlebot3_burger`, `turtlebot3_house`) are available locally in `GAZEBO_MODEL_PATH`:
    ```bash
    export GAZEBO_MODEL_PATH=/usr/share/gazebo-11/models:/opt/ros/humble/share/turtlebot3_gazebo/models:${GAZEBO_MODEL_PATH}
    ```
@@ -94,22 +94,58 @@ amcl:
     set_initial_pose: true
     initial_pose:
       x: -2.0
-      y: -0.5
+      y: 1.0
       z: 0.01
       yaw: 0.0
 ```
-This aligns the initial particle filter precisely with the spawn position `(-2.0, -0.5)` in `turtlebot3_world`, enabling fully autonomous startup.
+This aligns the initial particle filter precisely with the safe spawn position `(-2.0, 1.0)` in the `turtlebot3_house` Living Room, enabling fully autonomous startup.
 
 ---
 
-## 5. Issue: Stale Gazebo Background Processes
+## 5. Issue: Invalid Frame ID `${namespace}base_link` and Dropped Laser Scans
 
 ### Symptoms
-- Launching Gazebo fails with "Address already in use" or multiple masters competing on port 11345.
+- Nav2 local costmap repeatedly reports `Invalid frame ID "base_link" ... frame does not exist` when requesting the transform from `base_link` to `odom`.
+- AMCL and RViz2 drop `base_scan` messages because the transform from `base_scan` to `odom`/`map` cannot be resolved.
+- Echoing `/tf_static` shows frame IDs with literal `${namespace}` prefixes (`${namespace}base_footprint`, `${namespace}base_link`, `${namespace}base_scan`).
+
+### Root Cause
+In ROS 2 Humble, the URDF file in `turtlebot3_description` uses xacro macros with `$(arg namespace)`. If loaded raw using `open().read()` rather than through xacro evaluation or `turtlebot3_gazebo`'s resolved URDF, `robot_state_publisher` publishes literal string names with `${namespace}`. Because Gazebo's differential drive plugin publishes `odom -> base_footprint` without prefixes, the robot transform chain is broken.
 
 ### Fix
-Kill any lingering instances:
-```bash
-killall -9 gzserver gzclient
+In `launch/simulation.launch.py`, load the canonical, resolved URDF from `turtlebot3_gazebo`:
+```python
+tb3_model = os.environ.get('TURTLEBOT3_MODEL', 'burger')
+urdf_path = os.path.join(
+    get_package_share_directory('turtlebot3_gazebo'),
+    'urdf',
+    f'turtlebot3_{tb3_model}.urdf'
+)
 ```
-The launcher `src/start_robot.py` automatically checks for and terminates stale instances before booting.
+This restores the proper transform tree:
+`map -> odom -> base_footprint -> base_link -> base_scan`.
+
+---
+
+## 6. Issue: Stale Background Processes & Fast-DDS Shared-Memory Collisions
+
+### Symptoms
+- Launching Gazebo fails with "Address already in use" on port 11345.
+- Fast-DDS logs `[RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7425` or `Failed create_port`.
+- Nav2 nodes fail to load into `nav2_container`, and `navigation_demo.py` remains waiting at `Waiting for Nav2 stack lifecycle nodes to activate...`.
+- `ros2 lifecycle get /amcl` reports `Node not found`.
+
+### Root Cause
+If Gazebo Classic, `component_container_isolated`, or `rviz2` are terminated abruptly (e.g. via `kill -9` without a graceful shutdown), orphaned Fast-DDS mutex locks (`/dev/shm/fastrtps_*` and `/dev/shm/sem.fastrtps_*`) remain unlinked in shared memory. Subsequent launches attempt to allocate already-claimed shared memory ports, preventing intra-process communication between Nav2 lifecycle components.
+
+### Fix
+1. Terminate all lingering simulator and container processes:
+   ```bash
+   pkill -9 -f "gzserver|gzclient|component_container|robot_state_publisher|rviz2" || true
+   ```
+2. Unlink orphaned Fast-DDS shared memory and semaphore files:
+   ```bash
+   rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
+   ```
+3. Relaunch the stack using `src/start_robot.py --with-nav`. The launcher automatically executes these cleanup steps before starting child nodes.
+
